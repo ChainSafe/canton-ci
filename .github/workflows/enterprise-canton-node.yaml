@@ -1,0 +1,73 @@
+name: Canton Node
+
+on:
+  workflow_dispatch:
+
+jobs:
+  install-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Nix & DirEnv
+        run: |
+          sh <(curl -L https://nixos.org/nix/install) --daemon
+          sudo apt-get update
+          sudo apt-get install direnv
+      - name: Install Java (Temurin 21)
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+      - name: Set JAVA_HOME
+        run: |
+          echo "JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64" >> $GITHUB_ENV
+      - name: Install Node
+        uses: actions/setup-node@v5
+      - name: Install Docker
+        uses: docker/setup-buildx-action@v3
+      - name: Docker Login
+        uses: docker/login-action@v3
+        with:
+          registry: digitalasset-docker.jfrog.io
+          username: ${{ secrets.JFROG_DOCKER_USERNAME }}
+          password: ${{ secrets.JFROG_DOCKER_PASSWORD }}
+      - name: Docker Hub Login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Create & Update ~/.netrc
+        run: |
+          touch ~/.netrc
+          echo "machine digitalasset.jfrog.io" >> ~/.netrc
+          echo "login ${{ secrets.JFROG_DOCKER_USERNAME }}" >> ~/.netrc
+          echo "password ${{ secrets.JFROG_DOCKER_PASSWORD }}" >> ~/.netrc
+          chmod 600 ~/.netrc
+          curl -v --netrc "https://digitalasset.jfrog.io/artifactory/api/system/ping"
+      - name: Allow Direnv
+        run: |
+          cd cn-quickstart
+          direnv allow
+      - name: Install Daml SDK
+        run: |
+          cd cn-quickstart/quickstart
+          make install-daml-sdk
+      - name: Add Daml Installation to PATH
+        run: |
+          echo "PATH=$HOME/.daml/bin:$PATH" >> $GITHUB_ENV
+      - name: Setup
+        run: |
+          cd cn-quickstart/quickstart
+          echo | make setup
+      - name: Build
+        run: |
+          cd cn-quickstart/quickstart
+          make build
+      - name: Start
+        run: |
+          cd cn-quickstart/quickstart
+          make start

@@ -1,0 +1,24 @@
+name: Install Canton
+description: Install Canton
+
+inputs:
+  sdk_version:
+    required: false
+    description: The version of the Daml SDK to install (if not provided, installs latest stable)
+    type: string
+
+runs:
+  using: "composite"
+  steps:
+    - name: Download Canton Release
+      run: |
+        if [ -z "$SDK_VERSION" ]; then
+          SDK_VERSION=$(gh release list --repo digital-asset/daml --json tagName,isPrerelease --jq 'map(select(.isPrerelease == false)) | .[0].tagName' | sed 's/v//')
+        fi
+        gh release download v$SDK_VERSION --repo digital-asset/daml --pattern "canton-open-source*.tar.gz" --output canton-release.tar.gz
+        mkdir -p canton-release
+        tar zxvf canton-release.tar.gz -C canton-release --strip-components=1
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SDK_VERSION: ${{ inputs.sdk_version }}

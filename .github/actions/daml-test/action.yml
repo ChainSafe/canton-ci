@@ -1,0 +1,28 @@
+name: Daml Test
+description: Test a Daml project
+
+inputs:
+  project_path:
+    required: false
+    type: string
+    default: "."
+    description: The path to the Daml project. Defaults to the root of the repository.
+
+runs:
+  using: "composite"
+  steps:
+    - name: Get Project Variables
+      id: get-project-variables
+      uses: ChainSafe/canton-ci/.github/actions/get-project-variables@main
+      with:
+        project_path: ${{ inputs.project_path }}
+    - name: Install Daml
+      uses: ChainSafe/canton-ci/.github/actions/install-daml@main
+      with:
+        project_path: ${{ inputs.project_path }}
+        sdk_version: ${{ steps.get-project-variables.outputs.sdk_version }}
+    - name: Run Tests
+      run: |
+        cd ${GITHUB_WORKSPACE}/${{ inputs.project_path }}
+        daml test
+      shell: bash

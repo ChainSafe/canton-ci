@@ -1,0 +1,41 @@
+name: Get Project Variables
+description: Get project variables from daml.yaml file in Project Path
+
+inputs:
+  project_path:
+    required: false
+    type: string
+    default: "."
+outputs:
+  sdk_version:
+    description: The SDK version of the project
+    value: ${{ steps.get-project-variables.outputs.sdk_version }}
+  project_name:
+    description: The name of the project
+    value: ${{ steps.get-project-variables.outputs.project_name }}
+  project_version:
+    description: The version of the project
+    value: ${{ steps.get-project-variables.outputs.project_version }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: daml.yaml File Check
+      run: |
+        if [ ! -f ${GITHUB_WORKSPACE}/${{ inputs.project_path }}/daml.yaml ]; then
+          echo "daml.yaml file not found in Project Path: ${GITHUB_WORKSPACE}/${{ inputs.project_path }}"
+          exit 1
+        fi
+      shell: bash
+    - name: Install yq
+      run: |
+        sudo snap install yq
+      shell: bash
+    - name: Get Project Variables
+      id: get-project-variables
+      run: |
+        export PROJECT_PATH="${GITHUB_WORKSPACE}/${{ inputs.project_path }}"
+        echo "sdk_version=$(yq -r '.sdk-version' ${PROJECT_PATH}/daml.yaml)" >> $GITHUB_OUTPUT
+        echo "project_name=$(yq -r '.name' ${PROJECT_PATH}/daml.yaml)" >> $GITHUB_OUTPUT
+        echo "project_version=$(yq -r '.version' ${PROJECT_PATH}/daml.yaml)" >> $GITHUB_OUTPUT
+      shell: bash

@@ -1,0 +1,85 @@
+name: Daml Script
+description: Run Daml Scripts in a Project
+
+inputs:
+  project_path:
+    required: false
+    type: string
+    default: "."
+    description: The path to the Daml project. Defaults to the root of the repository.
+  json_api_port:
+    required: false
+    type: number
+    default: 7575
+    description: The port for the JSON API. Defaults to 7575.
+  ledger_api_port:
+    required: false
+    type: number
+    default: 6865
+    description: The port for the Ledger API. Defaults to 6865.
+  connection_attempts:
+    required: false
+    type: number
+    default: 10
+    description: The number of connection attempts to the Canton Node. Defaults to 10.
+  wait_time:
+    required: false
+    type: number
+    default: 5
+    description: The wait time between connection attempts to the Canton Node. Defaults to 5.
+
+runs:
+  using: "composite"
+  steps:
+    - name: Get Project Variables
+      id: get-project-variables
+      uses: ChainSafe/canton-ci/.github/actions/get-project-variables@main
+      with:
+        project_path: ${{ inputs.project_path }}
+    - name: Install Daml
+      uses: ChainSafe/canton-ci/.github/actions/install-daml@main
+      with:
+        project_path: ${{ inputs.project_path }}
+        sdk_version: ${{ steps.get-project-variables.outputs.sdk_version }}
+    - name: Install Canton
+      uses: ChainSafe/canton-ci/.github/actions/install-canton@main
+      with:
+        project_path: ${{ inputs.project_path }}
+        sdk_version: ${{ steps.get-project-variables.outputs.sdk_version }}
+    - name: Set Environment Variables
+      run: |
+        echo "ABSOLUTE_DAML_PROJECT_PATH=${GITHUB_WORKSPACE}/${{ inputs.project_path }}" >> $GITHUB_ENV
+      shell: bash
+    - name: Build Daml Project
+      run: |
+        cd $ABSOLUTE_DAML_PROJECT_PATH
+        echo "DAR_BUILD_PATH=$ABSOLUTE_DAML_PROJECT_PATH/.daml/dist/${{ steps.get-project-variables.outputs.project_name }}-${{ steps.get-project-variables.outputs.project_version }}.dar" >> $GITHUB_ENV
+        daml build
+      shell: bash
+    - name: Run Canton Node
+      run: |
+        ./canton-release/bin/canton sandbox --ledger-api-port ${{ inputs.ledger_api_port }} --json-api-port ${{ inputs.json_api_port }} --dar $DAR_BUILD_PATH &
+      shell: bash
+    - name: Wait for Canton to Start
+      run: |
+        export CONNECTION_ATTEMPTS=${{ inputs.connection_attempts }};
+        export WAIT_TIME=${{ inputs.wait_time }};
+
+        echo "Waiting for Canton to be ready..."
+        for i in $(seq 1 $CONNECTION_ATTEMPTS); do
+          if curl http://localhost:${{ inputs.json_api_port }}/livez > /dev/null 2>&1; then
+            echo "Canton is ready and responding on port ${{ inputs.json_api_port }}"
+            exit 0
+          else
+            echo "Attempt $i/$CONNECTION_ATTEMPTS: Canton not ready yet, waiting $WAIT_TIME seconds..."
+            sleep $WAIT_TIME
+          fi
+        done
+        echo "Canton failed to start within $CONNECTION_ATTEMPTS*$WAIT_TIME seconds"
+        exit 1
+      shell: bash
+    - name: Run daml script
+      run: |
+        cd $ABSOLUTE_DAML_PROJECT_PATH
+        daml script --dar $DAR_BUILD_PATH --all --ledger-host localhost --ledger-port ${{ inputs.ledger_api_port }}
+      shell: bash
